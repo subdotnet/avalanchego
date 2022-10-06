@@ -11,8 +11,9 @@ import (
 
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
-
 	"gopkg.in/natefinch/lumberjack.v2"
+
+	seq "github.com/subdotnet/avalancheseqlogger"
 )
 
 var _ Factory = &factory{}
@@ -89,7 +90,11 @@ func (f *factory) makeLogger(config Config) (Logger, error) {
 	fileCore := NewWrappedCore(config.LogLevel, rw, fileEnc)
 	prefix := config.LogFormat.WrapPrefix(config.MsgPrefix)
 
-	l := NewLogger(prefix, consoleCore, fileCore)
+	seqEncoder := seq.NewSeqEncoder(levelEncoder)
+	seqWriter, _ := seq.NewSeqWriter(seq.SeqDefaultUrl)
+	seqCore := NewWrappedCore(config.LogLevel, seqWriter, seqEncoder)
+
+	l := NewLogger(prefix, consoleCore, fileCore, seqCore)
 	f.loggers[config.LoggerName] = logWrapper{
 		logger:       l,
 		displayLevel: consoleCore.AtomicLevel,
