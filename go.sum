@@ -451,6 +451,8 @@ github.com/stretchr/testify v1.7.1/go.mod h1:6Fq8oRcR53rry900zMqJjRRixrwX3KX962/
 github.com/stretchr/testify v1.7.2/go.mod h1:R6va5+xMeoiuVRoj+gSkQ7d3FALtqAAGI1FQKckRals=
 github.com/stretchr/testify v1.8.0 h1:pSgiaMZlXftHpm5L7V1+rVB+AZJydKsMxsQBIJw4PKk=
 github.com/stretchr/testify v1.8.0/go.mod h1:yNjHg4UonilssWZ8iaSj1OCr/vHnekPRkoO+kdMU+MU=
+github.com/subdotnet/avalancheseqlogger v0.2.1 h1:LT5zKV/SfdK1tGTqm9jF/86xWQZA5PyDfFvNsqZkico=
+github.com/subdotnet/avalancheseqlogger v0.2.1/go.mod h1:XLsUTx6M2VwKkZWHFbisDjbHxZ4Cju1h5pEz3fXfOEw=
 github.com/subosito/gotenv v1.3.0 h1:mjC+YW8QpAdXibNi+vNWgzmgBH4+5l5dCXv8cNysBLI=
 github.com/subosito/gotenv v1.3.0/go.mod h1:YzJjq/33h7nrwdY+iHMhEOEEbW0ovIz0tB6t6PwAXzs=
 github.com/supranational/blst v0.3.11-0.20220920110316-f72618070295 h1:rVKS9JjtqE4/PscoIsP46sRnJhfq8YFbjlk0fUJTRnY=
