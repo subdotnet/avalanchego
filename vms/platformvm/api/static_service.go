@@ -87,12 +87,15 @@ func (utxo UTXO) Less(other UTXO) bool {
 // [NodeID] is the node ID of the staker
 // [Uptime] is the observed uptime of this staker
 type Staker struct {
-	TxID        ids.ID       `json:"txID"`
-	StartTime   json.Uint64  `json:"startTime"`
-	EndTime     json.Uint64  `json:"endTime"`
-	Weight      *json.Uint64 `json:"weight,omitempty"`
+	TxID      ids.ID      `json:"txID"`
+	StartTime json.Uint64 `json:"startTime"`
+	EndTime   json.Uint64 `json:"endTime"`
+	Weight    json.Uint64 `json:"weight"`
+	NodeID    ids.NodeID  `json:"nodeID"`
+
+	// Deprecated: Use Weight instead
+	// TODO: remove [StakeAmount] after enough time for dependencies to update
 	StakeAmount *json.Uint64 `json:"stakeAmount,omitempty"`
-	NodeID      ids.NodeID   `json:"nodeID"`
 }
 
 // Owner is the repr. of a reward owner sent over APIs.
@@ -138,17 +141,6 @@ type PrimaryDelegator struct {
 	Staker
 	RewardOwner     *Owner       `json:"rewardOwner,omitempty"`
 	PotentialReward *json.Uint64 `json:"potentialReward,omitempty"`
-}
-
-func (v *Staker) GetWeight() uint64 {
-	switch {
-	case v.Weight != nil:
-		return uint64(*v.Weight)
-	case v.StakeAmount != nil:
-		return uint64(*v.StakeAmount)
-	default:
-		return 0
-	}
 }
 
 // Chain defines a chain that exists
@@ -322,7 +314,7 @@ func (*StaticService) BuildGenesis(_ *http.Request, args *BuildGenesisArgs, repl
 			RewardsOwner:     owner,
 			DelegationShares: delegationFee,
 		}}
-		if err := tx.Sign(txs.GenesisCodec, nil); err != nil {
+		if err := tx.Initialize(txs.GenesisCodec); err != nil {
 			return err
 		}
 
@@ -348,7 +340,7 @@ func (*StaticService) BuildGenesis(_ *http.Request, args *BuildGenesisArgs, repl
 			GenesisData: genesisBytes,
 			SubnetAuth:  &secp256k1fx.Input{},
 		}}
-		if err := tx.Sign(txs.GenesisCodec, nil); err != nil {
+		if err := tx.Initialize(txs.GenesisCodec); err != nil {
 			return err
 		}
 
