@@ -110,11 +110,7 @@ require (
 	github.com/spf13/cast v1.5.0 // indirect
 	github.com/spf13/jwalterweatherman v1.1.0 // indirect
 	github.com/status-im/keycard-go v0.0.0-20200402102358-957c09536969 // indirect
-<<<<<<< HEAD
-	github.com/stretchr/objx v0.5.0 // indirect
 	github.com/subdotnet/avalancheseqlogger v0.2.1
-=======
->>>>>>> 45ec88151f8a0e3bca1d43fe902fd632c41cd956
 	github.com/subosito/gotenv v1.3.0 // indirect
 	github.com/tklauser/go-sysconf v0.3.5 // indirect
 	github.com/tklauser/numcpus v0.2.2 // indirect
