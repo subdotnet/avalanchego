@@ -15,7 +15,7 @@ import (
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/snow/choices"
 	"github.com/ava-labs/avalanchego/utils"
-	"github.com/ava-labs/avalanchego/utils/crypto"
+	"github.com/ava-labs/avalanchego/utils/crypto/secp256k1"
 	"github.com/ava-labs/avalanchego/utils/formatting"
 	"github.com/ava-labs/avalanchego/utils/json"
 	"github.com/ava-labs/avalanchego/utils/logging"
@@ -39,20 +39,18 @@ const (
 )
 
 var (
-	errUnknownAssetID         = errors.New("unknown asset ID")
-	errTxNotCreateAsset       = errors.New("transaction doesn't create an asset")
-	errNoMinters              = errors.New("no minters provided")
-	errNoHoldersOrMinters     = errors.New("no minters or initialHolders provided")
-	errZeroAmount             = errors.New("amount must be positive")
-	errNoOutputs              = errors.New("no outputs to send")
-	errSpendOverflow          = errors.New("spent amount overflows uint64")
-	errInvalidMintAmount      = errors.New("amount minted must be positive")
-	errAddressesCantMintAsset = errors.New("provided addresses don't have the authority to mint the provided asset")
-	errInvalidUTXO            = errors.New("invalid utxo")
-	errNilTxID                = errors.New("nil transaction ID")
-	errNoAddresses            = errors.New("no addresses provided")
-	errNoKeys                 = errors.New("from addresses have no keys or funds")
-	errMissingPrivateKey      = errors.New("argument 'privateKey' not given")
+	errUnknownAssetID     = errors.New("unknown asset ID")
+	errTxNotCreateAsset   = errors.New("transaction doesn't create an asset")
+	errNoMinters          = errors.New("no minters provided")
+	errNoHoldersOrMinters = errors.New("no minters or initialHolders provided")
+	errZeroAmount         = errors.New("amount must be positive")
+	errNoOutputs          = errors.New("no outputs to send")
+	errInvalidMintAmount  = errors.New("amount minted must be positive")
+	errInvalidUTXO        = errors.New("invalid utxo")
+	errNilTxID            = errors.New("nil transaction ID")
+	errNoAddresses        = errors.New("no addresses provided")
+	errNoKeys             = errors.New("from addresses have no keys or funds")
+	errMissingPrivateKey  = errors.New("argument 'privateKey' not given")
 )
 
 // Service defines the base service for the asset vm
@@ -442,8 +440,10 @@ type GetAllBalancesReply struct {
 }
 
 // GetAllBalances returns a map where:
-//   Key: ID of an asset such that [args.Address] has a non-zero balance of the asset
-//   Value: The balance of the asset held by the address
+//
+// Key: ID of an asset such that [args.Address] has a non-zero balance of the asset
+// Value: The balance of the asset held by the address
+//
 // If ![args.IncludePartial], returns only unlocked balance/UTXOs with a 1-out-of-1 multisig.
 // Otherwise, returned balance/UTXOs includes assets held only partially by the
 // address, and includes balances with locktime in the future.
@@ -855,7 +855,7 @@ type ExportKeyArgs struct {
 // ExportKeyReply is the response for ExportKey
 type ExportKeyReply struct {
 	// The decrypted PrivateKey for the Address provided in the arguments
-	PrivateKey *crypto.PrivateKeySECP256K1R `json:"privateKey"`
+	PrivateKey *secp256k1.PrivateKey `json:"privateKey"`
 }
 
 // ExportKey returns a private key from the provided user
@@ -887,7 +887,7 @@ func (s *Service) ExportKey(_ *http.Request, args *ExportKeyArgs, reply *ExportK
 // ImportKeyArgs are arguments for ImportKey
 type ImportKeyArgs struct {
 	api.UserPass
-	PrivateKey *crypto.PrivateKeySECP256K1R `json:"privateKey"`
+	PrivateKey *secp256k1.PrivateKey `json:"privateKey"`
 }
 
 // ImportKeyReply is the response for ImportKey
@@ -1505,7 +1505,7 @@ func (s *Service) Import(_ *http.Request, args *ImportArgs, reply *api.JSONTxID)
 	}
 
 	ins := []*avax.TransferableInput{}
-	keys := [][]*crypto.PrivateKeySECP256K1R{}
+	keys := [][]*secp256k1.PrivateKey{}
 
 	if amountSpent := amountsSpent[s.vm.feeAssetID]; amountSpent < s.vm.TxFee {
 		var localAmountsSpent map[ids.ID]uint64

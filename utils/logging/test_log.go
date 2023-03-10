@@ -4,7 +4,6 @@
 package logging
 
 import (
-	"errors"
 	"io"
 
 	"go.uber.org/zap"
@@ -14,15 +13,13 @@ var (
 	// Discard is a mock WriterCloser that drops all writes and close requests
 	Discard io.WriteCloser = discard{}
 
-	errNoLoggerWrite = errors.New("NoLogger can't write")
-
 	_ Logger = NoLog{}
 )
 
 type NoLog struct{}
 
-func (NoLog) Write([]byte) (int, error) {
-	return 0, errNoLoggerWrite
+func (NoLog) Write(b []byte) (int, error) {
+	return len(b), nil
 }
 
 func (NoLog) Fatal(string, ...zap.Field) {}
@@ -38,6 +35,8 @@ func (NoLog) Trace(string, ...zap.Field) {}
 func (NoLog) Debug(string, ...zap.Field) {}
 
 func (NoLog) Verbo(string, ...zap.Field) {}
+
+func (NoLog) SetLevel(Level) {}
 
 func (NoLog) StopOnPanic() {}
 

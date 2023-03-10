@@ -22,11 +22,13 @@ The minimum recommended hardware specification for nodes connected to Mainnet is
 
 If you plan to build AvalancheGo from source, you will also need the following software:
 
-- [Go](https://golang.org/doc/install) version >= 1.18.1
+- [Go](https://golang.org/doc/install) version >= 1.19.6
 - [gcc](https://gcc.gnu.org/)
 - g++
 
-### Native Install
+### Building From Source
+
+#### Clone The Repository
 
 Clone the AvalancheGo repository:
 
@@ -35,17 +37,17 @@ git clone git@github.com:ava-labs/avalanchego.git
 cd avalanchego
 ```
 
-This will clone and checkout to `master` branch.
+This will clone and checkout the `master` branch.
 
-#### Building the Avalanche Executable
+#### Building AvalancheGo
 
-Build Avalanche by running the build script:
+Build AvalancheGo by running the build script:
 
 ```sh
 ./scripts/build.sh
 ```
 
-The output of the script will be the Avalanche binary named `avalanchego`. It is located in the build directory:
+The `avalanchego` binary is now in the `build` directory. To run:
 
 ```sh
 ./build/avalanchego
@@ -59,21 +61,12 @@ Install AvalancheGo using an `apt` repository.
 
 If you have already added the APT repository, you do not need to add it again.
 
-To add the repository on Ubuntu 20.04 (Focal), run:
+To add the repository on Ubuntu, run:
 
 ```sh
 sudo su -
-wget -O - https://downloads.avax.network/avalanchego.gpg.key | apt-key add -
-echo "deb https://downloads.avax.network/apt focal main" > /etc/apt/sources.list.d/avalanche.list
-exit
-```
-
-To add the repository on Ubuntu 22.04 (Jammy), run:
-
-```sh
-sudo su -
-wget -O - https://downloads.avax.network/avalanchego.gpg.key | apt-key add -
-echo "deb https://downloads.avax.network/apt jammy main" > /etc/apt/sources.list.d/avalanche.list
+wget -qO - https://downloads.avax.network/avalanchego.gpg.key | tee /etc/apt/trusted.gpg.d/avalanchego.asc
+source /etc/os-release && echo "deb https://downloads.avax.network/apt $UBUNTU_CODENAME main" > /etc/apt/sources.list.d/avalanche.list
 exit
 ```
 
@@ -160,7 +153,7 @@ To regenerate the protobuf go code, run `scripts/protobuf_codegen.sh` from the r
 
 This should only be necessary when upgrading protobuf versions or modifying .proto definition files.
 
-To use this script, you must have [buf](https://docs.buf.build/installation) (v1.9.0), protoc-gen-go (v1.28.0) and protoc-gen-go-grpc (v1.2.0) installed.
+To use this script, you must have [buf](https://docs.buf.build/installation) (v1.11.0), protoc-gen-go (v1.28.0) and protoc-gen-go-grpc (v1.2.0) installed.
 
 To install the buf dependencies:
 
@@ -252,4 +245,4 @@ To officially support a new platform, one must satisfy the following requirement
 
 **We and our community welcome responsible disclosures.**
 
-If you've discovered a security vulnerability, please report it via our [bug bounty program](https://hackenproof.com/avalanche/). Valid reports will be eligible for a reward (terms and conditions apply).
+Please refer to our [Security Policy](SECURITY.md) and [Security Advisories](https://github.com/ava-labs/avalanchego/security/advisories).

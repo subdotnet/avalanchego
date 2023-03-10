@@ -25,7 +25,7 @@ import (
 	"github.com/ava-labs/avalanchego/snow/choices"
 	"github.com/ava-labs/avalanchego/snow/engine/common"
 	"github.com/ava-labs/avalanchego/utils/constants"
-	"github.com/ava-labs/avalanchego/utils/crypto"
+	"github.com/ava-labs/avalanchego/utils/crypto/secp256k1"
 	"github.com/ava-labs/avalanchego/utils/formatting"
 	"github.com/ava-labs/avalanchego/utils/formatting/address"
 	"github.com/ava-labs/avalanchego/utils/json"
@@ -304,8 +304,8 @@ func TestServiceGetBalanceStrict(t *testing.T) {
 		},
 	}
 	// Insert the UTXO
-	err = vm.state.PutUTXO(twoOfTwoUTXO)
-	require.NoError(t, err)
+	vm.state.AddUTXO(twoOfTwoUTXO)
+	require.NoError(t, vm.state.Commit())
 
 	// Check the balance with IncludePartial set to true
 	balanceArgs := &GetBalanceArgs{
@@ -349,8 +349,8 @@ func TestServiceGetBalanceStrict(t *testing.T) {
 		},
 	}
 	// Insert the UTXO
-	err = vm.state.PutUTXO(oneOfTwoUTXO)
-	require.NoError(t, err)
+	vm.state.AddUTXO(oneOfTwoUTXO)
+	require.NoError(t, vm.state.Commit())
 
 	// Check the balance with IncludePartial set to true
 	balanceArgs = &GetBalanceArgs{
@@ -396,8 +396,8 @@ func TestServiceGetBalanceStrict(t *testing.T) {
 		},
 	}
 	// Insert the UTXO
-	err = vm.state.PutUTXO(futureUTXO)
-	require.NoError(t, err)
+	vm.state.AddUTXO(futureUTXO)
+	require.NoError(t, vm.state.Commit())
 
 	// Check the balance with IncludePartial set to true
 	balanceArgs = &GetBalanceArgs{
@@ -500,8 +500,8 @@ func TestServiceGetAllBalances(t *testing.T) {
 		},
 	}
 	// Insert the UTXO
-	err = vm.state.PutUTXO(twoOfTwoUTXO)
-	require.NoError(t, err)
+	vm.state.AddUTXO(twoOfTwoUTXO)
+	require.NoError(t, vm.state.Commit())
 
 	// Check the balance with IncludePartial set to true
 	balanceArgs := &GetAllBalancesArgs{
@@ -542,8 +542,8 @@ func TestServiceGetAllBalances(t *testing.T) {
 		},
 	}
 	// Insert the UTXO
-	err = vm.state.PutUTXO(oneOfTwoUTXO)
-	require.NoError(t, err)
+	vm.state.AddUTXO(oneOfTwoUTXO)
+	require.NoError(t, vm.state.Commit())
 
 	// Check the balance with IncludePartial set to true
 	balanceArgs = &GetAllBalancesArgs{
@@ -587,8 +587,8 @@ func TestServiceGetAllBalances(t *testing.T) {
 		},
 	}
 	// Insert the UTXO
-	err = vm.state.PutUTXO(futureUTXO)
-	require.NoError(t, err)
+	vm.state.AddUTXO(futureUTXO)
+	require.NoError(t, vm.state.Commit())
 
 	// Check the balance with IncludePartial set to true
 	balanceArgs = &GetAllBalancesArgs{
@@ -630,8 +630,8 @@ func TestServiceGetAllBalances(t *testing.T) {
 		},
 	}
 	// Insert the UTXO
-	err = vm.state.PutUTXO(otherAssetUTXO)
-	require.NoError(t, err)
+	vm.state.AddUTXO(otherAssetUTXO)
+	require.NoError(t, vm.state.Commit())
 
 	// Check the balance with IncludePartial set to true
 	balanceArgs = &GetAllBalancesArgs{
@@ -937,7 +937,7 @@ func TestServiceGetTxJSON_OperationTxWithNftxMintOp(t *testing.T) {
 	}
 
 	mintNFTTx := buildOperationTxWithOp(buildNFTxMintOp(createAssetTx, key, 2, 1))
-	err = mintNFTTx.SignNFTFx(vm.parser.Codec(), [][]*crypto.PrivateKeySECP256K1R{{key}})
+	err = mintNFTTx.SignNFTFx(vm.parser.Codec(), [][]*secp256k1.PrivateKey{{key}})
 	require.NoError(t, err)
 
 	txID, err := vm.IssueTx(mintNFTTx.Bytes())
@@ -1047,7 +1047,7 @@ func TestServiceGetTxJSON_OperationTxWithMultipleNftxMintOp(t *testing.T) {
 	mintOp2 := buildNFTxMintOp(createAssetTx, key, 3, 2)
 	mintNFTTx := buildOperationTxWithOp(mintOp1, mintOp2)
 
-	err = mintNFTTx.SignNFTFx(vm.parser.Codec(), [][]*crypto.PrivateKeySECP256K1R{{key}, {key}})
+	err = mintNFTTx.SignNFTFx(vm.parser.Codec(), [][]*secp256k1.PrivateKey{{key}, {key}})
 	require.NoError(t, err)
 
 	txID, err := vm.IssueTx(mintNFTTx.Bytes())
@@ -1153,7 +1153,7 @@ func TestServiceGetTxJSON_OperationTxWithSecpMintOp(t *testing.T) {
 	}
 
 	mintSecpOpTx := buildOperationTxWithOp(buildSecpMintOp(createAssetTx, key, 0))
-	err = mintSecpOpTx.SignSECP256K1Fx(vm.parser.Codec(), [][]*crypto.PrivateKeySECP256K1R{{key}})
+	err = mintSecpOpTx.SignSECP256K1Fx(vm.parser.Codec(), [][]*secp256k1.PrivateKey{{key}})
 	require.NoError(t, err)
 
 	txID, err := vm.IssueTx(mintSecpOpTx.Bytes())
@@ -1265,7 +1265,7 @@ func TestServiceGetTxJSON_OperationTxWithMultipleSecpMintOp(t *testing.T) {
 	op2 := buildSecpMintOp(createAssetTx, key, 1)
 	mintSecpOpTx := buildOperationTxWithOp(op1, op2)
 
-	err = mintSecpOpTx.SignSECP256K1Fx(vm.parser.Codec(), [][]*crypto.PrivateKeySECP256K1R{{key}, {key}})
+	err = mintSecpOpTx.SignSECP256K1Fx(vm.parser.Codec(), [][]*secp256k1.PrivateKey{{key}, {key}})
 	require.NoError(t, err)
 
 	txID, err := vm.IssueTx(mintSecpOpTx.Bytes())
@@ -1371,7 +1371,7 @@ func TestServiceGetTxJSON_OperationTxWithPropertyFxMintOp(t *testing.T) {
 		t.Fatal(err)
 	}
 	mintPropertyFxOpTx := buildOperationTxWithOp(buildPropertyFxMintOp(createAssetTx, key, 4))
-	err = mintPropertyFxOpTx.SignPropertyFx(vm.parser.Codec(), [][]*crypto.PrivateKeySECP256K1R{{key}})
+	err = mintPropertyFxOpTx.SignPropertyFx(vm.parser.Codec(), [][]*secp256k1.PrivateKey{{key}})
 	require.NoError(t, err)
 
 	txID, err := vm.IssueTx(mintPropertyFxOpTx.Bytes())
@@ -1482,7 +1482,7 @@ func TestServiceGetTxJSON_OperationTxWithPropertyFxMintOpMultiple(t *testing.T) 
 	op2 := buildPropertyFxMintOp(createAssetTx, key, 5)
 	mintPropertyFxOpTx := buildOperationTxWithOp(op1, op2)
 
-	err = mintPropertyFxOpTx.SignPropertyFx(vm.parser.Codec(), [][]*crypto.PrivateKeySECP256K1R{{key}, {key}})
+	err = mintPropertyFxOpTx.SignPropertyFx(vm.parser.Codec(), [][]*secp256k1.PrivateKey{{key}, {key}})
 	require.NoError(t, err)
 
 	txID, err := vm.IssueTx(mintPropertyFxOpTx.Bytes())
@@ -1531,7 +1531,7 @@ func newAvaxBaseTxWithOutputs(t *testing.T, genesisBytes []byte, vm *VM) *txs.Tx
 	avaxTx := GetAVAXTxFromGenesisTest(genesisBytes, t)
 	key := keys[0]
 	tx := buildBaseTx(avaxTx, vm, key)
-	if err := tx.SignSECP256K1Fx(vm.parser.Codec(), [][]*crypto.PrivateKeySECP256K1R{{key}}); err != nil {
+	if err := tx.SignSECP256K1Fx(vm.parser.Codec(), [][]*secp256k1.PrivateKey{{key}}); err != nil {
 		t.Fatal(err)
 	}
 	return tx
@@ -1541,7 +1541,7 @@ func newAvaxExportTxWithOutputs(t *testing.T, genesisBytes []byte, vm *VM) *txs.
 	avaxTx := GetAVAXTxFromGenesisTest(genesisBytes, t)
 	key := keys[0]
 	tx := buildExportTx(avaxTx, vm, key)
-	if err := tx.SignSECP256K1Fx(vm.parser.Codec(), [][]*crypto.PrivateKeySECP256K1R{{key}}); err != nil {
+	if err := tx.SignSECP256K1Fx(vm.parser.Codec(), [][]*secp256k1.PrivateKey{{key}}); err != nil {
 		t.Fatal(err)
 	}
 	return tx
@@ -1556,7 +1556,7 @@ func newAvaxCreateAssetTxWithOutputs(t *testing.T, vm *VM) *txs.Tx {
 	return tx
 }
 
-func buildBaseTx(avaxTx *txs.Tx, vm *VM, key *crypto.PrivateKeySECP256K1R) *txs.Tx {
+func buildBaseTx(avaxTx *txs.Tx, vm *VM, key *secp256k1.PrivateKey) *txs.Tx {
 	return &txs.Tx{Unsigned: &txs.BaseTx{
 		BaseTx: avax.BaseTx{
 			NetworkID:    networkID,
@@ -1591,7 +1591,7 @@ func buildBaseTx(avaxTx *txs.Tx, vm *VM, key *crypto.PrivateKeySECP256K1R) *txs.
 	}}
 }
 
-func buildExportTx(avaxTx *txs.Tx, vm *VM, key *crypto.PrivateKeySECP256K1R) *txs.Tx {
+func buildExportTx(avaxTx *txs.Tx, vm *VM, key *secp256k1.PrivateKey) *txs.Tx {
 	return &txs.Tx{Unsigned: &txs.ExportTx{
 		BaseTx: txs.BaseTx{
 			BaseTx: avax.BaseTx{
@@ -1624,7 +1624,7 @@ func buildExportTx(avaxTx *txs.Tx, vm *VM, key *crypto.PrivateKeySECP256K1R) *tx
 	}}
 }
 
-func buildCreateAssetTx(key *crypto.PrivateKeySECP256K1R) *txs.Tx {
+func buildCreateAssetTx(key *secp256k1.PrivateKey) *txs.Tx {
 	return &txs.Tx{Unsigned: &txs.CreateAssetTx{
 		BaseTx: txs.BaseTx{BaseTx: avax.BaseTx{
 			NetworkID:    networkID,
@@ -1690,7 +1690,7 @@ func buildCreateAssetTx(key *crypto.PrivateKeySECP256K1R) *txs.Tx {
 	}}
 }
 
-func buildNFTxMintOp(createAssetTx *txs.Tx, key *crypto.PrivateKeySECP256K1R, outputIndex, groupID uint32) *txs.Operation {
+func buildNFTxMintOp(createAssetTx *txs.Tx, key *secp256k1.PrivateKey, outputIndex, groupID uint32) *txs.Operation {
 	return &txs.Operation{
 		Asset: avax.Asset{ID: createAssetTx.ID()},
 		UTXOIDs: []*avax.UTXOID{{
@@ -1711,7 +1711,7 @@ func buildNFTxMintOp(createAssetTx *txs.Tx, key *crypto.PrivateKeySECP256K1R, ou
 	}
 }
 
-func buildPropertyFxMintOp(createAssetTx *txs.Tx, key *crypto.PrivateKeySECP256K1R, outputIndex uint32) *txs.Operation {
+func buildPropertyFxMintOp(createAssetTx *txs.Tx, key *secp256k1.PrivateKey, outputIndex uint32) *txs.Operation {
 	return &txs.Operation{
 		Asset: avax.Asset{ID: createAssetTx.ID()},
 		UTXOIDs: []*avax.UTXOID{{
@@ -1732,7 +1732,7 @@ func buildPropertyFxMintOp(createAssetTx *txs.Tx, key *crypto.PrivateKeySECP256K
 	}
 }
 
-func buildSecpMintOp(createAssetTx *txs.Tx, key *crypto.PrivateKeySECP256K1R, outputIndex uint32) *txs.Operation {
+func buildSecpMintOp(createAssetTx *txs.Tx, key *secp256k1.PrivateKey, outputIndex uint32) *txs.Operation {
 	return &txs.Operation{
 		Asset: avax.Asset{ID: createAssetTx.ID()},
 		UTXOIDs: []*avax.UTXOID{{
@@ -1829,10 +1829,9 @@ func TestServiceGetUTXOs(t *testing.T) {
 				},
 			},
 		}
-		if err := vm.state.PutUTXO(utxo); err != nil {
-			t.Fatal(err)
-		}
+		vm.state.AddUTXO(utxo)
 	}
+	require.NoError(t, vm.state.Commit())
 
 	sm := m.NewSharedMemory(constants.PlatformChainID)
 
@@ -2422,12 +2421,11 @@ func TestImportExportKey(t *testing.T) {
 		vm.ctx.Lock.Unlock()
 	}()
 
-	factory := crypto.FactorySECP256K1R{}
-	skIntf, err := factory.NewPrivateKey()
+	factory := secp256k1.Factory{}
+	sk, err := factory.NewPrivateKey()
 	if err != nil {
 		t.Fatalf("problem generating private key: %s", err)
 	}
-	sk := skIntf.(*crypto.PrivateKeySECP256K1R)
 
 	importArgs := &ImportKeyArgs{
 		UserPass: api.UserPass{
@@ -2472,12 +2470,11 @@ func TestImportAVMKeyNoDuplicates(t *testing.T) {
 		ctx.Lock.Unlock()
 	}()
 
-	factory := crypto.FactorySECP256K1R{}
-	skIntf, err := factory.NewPrivateKey()
+	factory := secp256k1.Factory{}
+	sk, err := factory.NewPrivateKey()
 	if err != nil {
 		t.Fatalf("problem generating private key: %s", err)
 	}
-	sk := skIntf.(*crypto.PrivateKeySECP256K1R)
 	args := ImportKeyArgs{
 		UserPass: api.UserPass{
 			Username: username,

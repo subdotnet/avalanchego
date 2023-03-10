@@ -18,13 +18,17 @@ import (
 
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/message"
+	"github.com/ava-labs/avalanchego/proto/pb/p2p"
 	"github.com/ava-labs/avalanchego/snow"
 	"github.com/ava-labs/avalanchego/snow/engine/common"
 	"github.com/ava-labs/avalanchego/snow/networking/tracker"
 	"github.com/ava-labs/avalanchego/snow/validators"
+	"github.com/ava-labs/avalanchego/subnets"
 	"github.com/ava-labs/avalanchego/utils/math/meter"
 	"github.com/ava-labs/avalanchego/utils/resource"
 )
+
+var errFatal = errors.New("error should cause handler to close")
 
 func TestHandlerDropsTimedOutMessages(t *testing.T) {
 	called := make(chan struct{})
@@ -47,10 +51,10 @@ func TestHandlerDropsTimedOutMessages(t *testing.T) {
 		ctx,
 		vdrs,
 		nil,
-		nil,
 		time.Second,
 		resourceTracker,
 		validators.UnhandledSubnetConnector,
+		subnets.New(ctx.NodeID, subnets.Config{}),
 	)
 	require.NoError(t, err)
 	handler := handlerIntf.(*handler)
@@ -76,7 +80,10 @@ func TestHandlerDropsTimedOutMessages(t *testing.T) {
 		return nil
 	}
 	handler.SetBootstrapper(bootstrapper)
-	ctx.SetState(snow.Bootstrapping) // assumed bootstrapping is ongoing
+	ctx.State.Set(snow.EngineState{
+		Type:  p2p.EngineType_ENGINE_TYPE_SNOWMAN,
+		State: snow.Bootstrapping, // assumed bootstrap is ongoing
+	})
 
 	pastTime := time.Now()
 	handler.clock.Set(pastTime)
@@ -84,14 +91,14 @@ func TestHandlerDropsTimedOutMessages(t *testing.T) {
 	nodeID := ids.EmptyNodeID
 	reqID := uint32(1)
 	chainID := ids.ID{}
-	msg := message.InboundGetAcceptedFrontier(chainID, reqID, 0*time.Second, nodeID)
+	msg := message.InboundGetAcceptedFrontier(chainID, reqID, 0*time.Second, nodeID, p2p.EngineType_ENGINE_TYPE_SNOWMAN)
 	handler.Push(context.Background(), msg)
 
 	currentTime := time.Now().Add(time.Second)
 	handler.clock.Set(currentTime)
 
 	reqID++
-	msg = message.InboundGetAccepted(chainID, reqID, 1*time.Second, nil, nodeID)
+	msg = message.InboundGetAccepted(chainID, reqID, 1*time.Second, nil, nodeID, p2p.EngineType_ENGINE_TYPE_SNOWMAN)
 	handler.Push(context.Background(), msg)
 
 	bootstrapper.StartF = func(context.Context, uint32) error {
@@ -128,10 +135,10 @@ func TestHandlerClosesOnError(t *testing.T) {
 		ctx,
 		vdrs,
 		nil,
-		nil,
 		time.Second,
 		resourceTracker,
 		validators.UnhandledSubnetConnector,
+		subnets.New(ctx.NodeID, subnets.Config{}),
 	)
 	require.NoError(t, err)
 	handler := handlerIntf.(*handler)
@@ -154,7 +161,7 @@ func TestHandlerClosesOnError(t *testing.T) {
 		return ctx
 	}
 	bootstrapper.GetAcceptedFrontierF = func(ctx context.Context, nodeID ids.NodeID, requestID uint32) error {
-		return errors.New("Engine error should cause handler to close")
+		return errFatal
 	}
 	handler.SetBootstrapper(bootstrapper)
 
@@ -167,7 +174,10 @@ func TestHandlerClosesOnError(t *testing.T) {
 
 	// assume bootstrapping is ongoing so that InboundGetAcceptedFrontier
 	// should normally be handled
-	ctx.SetState(snow.Bootstrapping)
+	ctx.State.Set(snow.EngineState{
+		Type:  p2p.EngineType_ENGINE_TYPE_SNOWMAN,
+		State: snow.Bootstrapping,
+	})
 
 	bootstrapper.StartF = func(context.Context, uint32) error {
 		return nil
@@ -178,7 +188,7 @@ func TestHandlerClosesOnError(t *testing.T) {
 	nodeID := ids.EmptyNodeID
 	reqID := uint32(1)
 	deadline := time.Nanosecond
-	msg := message.InboundGetAcceptedFrontier(ids.ID{}, reqID, deadline, nodeID)
+	msg := message.InboundGetAcceptedFrontier(ids.ID{}, reqID, deadline, nodeID, 0)
 	handler.Push(context.Background(), msg)
 
 	ticker := time.NewTicker(time.Second)
@@ -207,10 +217,10 @@ func TestHandlerDropsGossipDuringBootstrapping(t *testing.T) {
 		ctx,
 		vdrs,
 		nil,
-		nil,
 		1,
 		resourceTracker,
 		validators.UnhandledSubnetConnector,
+		subnets.New(ctx.NodeID, subnets.Config{}),
 	)
 	require.NoError(t, err)
 	handler := handlerIntf.(*handler)
@@ -234,7 +244,10 @@ func TestHandlerDropsGossipDuringBootstrapping(t *testing.T) {
 		return nil
 	}
 	handler.SetBootstrapper(bootstrapper)
-	ctx.SetState(snow.Bootstrapping) // assumed bootstrapping is ongoing
+	ctx.State.Set(snow.EngineState{
+		Type:  p2p.EngineType_ENGINE_TYPE_SNOWMAN,
+		State: snow.Bootstrapping, // assumed bootstrap is ongoing
+	})
 
 	bootstrapper.StartF = func(context.Context, uint32) error {
 		return nil
@@ -245,7 +258,7 @@ func TestHandlerDropsGossipDuringBootstrapping(t *testing.T) {
 	nodeID := ids.EmptyNodeID
 	chainID := ids.Empty
 	reqID := uint32(1)
-	inMsg := message.InternalGetFailed(nodeID, chainID, reqID)
+	inMsg := message.InternalGetFailed(nodeID, chainID, reqID, p2p.EngineType_ENGINE_TYPE_SNOWMAN)
 	handler.Push(context.Background(), inMsg)
 
 	ticker := time.NewTicker(time.Second)
@@ -276,10 +289,10 @@ func TestHandlerDispatchInternal(t *testing.T) {
 		ctx,
 		vdrs,
 		msgFromVMChan,
-		nil,
 		time.Second,
 		resourceTracker,
 		validators.UnhandledSubnetConnector,
+		subnets.New(ctx.NodeID, subnets.Config{}),
 	)
 	require.NoError(t, err)
 
@@ -304,7 +317,10 @@ func TestHandlerDispatchInternal(t *testing.T) {
 		return nil
 	}
 	handler.SetConsensus(engine)
-	ctx.SetState(snow.NormalOp) // assumed bootstrapping is done
+	ctx.State.Set(snow.EngineState{
+		Type:  p2p.EngineType_ENGINE_TYPE_SNOWMAN,
+		State: snow.NormalOp, // assumed bootstrap is done
+	})
 
 	bootstrapper.StartF = func(context.Context, uint32) error {
 		return nil
@@ -344,10 +360,10 @@ func TestHandlerSubnetConnector(t *testing.T) {
 		ctx,
 		vdrs,
 		nil,
-		nil,
 		time.Second,
 		resourceTracker,
 		connector,
+		subnets.New(ctx.NodeID, subnets.Config{}),
 	)
 	require.NoError(t, err)
 
@@ -368,7 +384,10 @@ func TestHandlerSubnetConnector(t *testing.T) {
 		return ctx
 	}
 	handler.SetConsensus(engine)
-	ctx.SetState(snow.NormalOp) // assumed bootstrapping is done
+	ctx.State.Set(snow.EngineState{
+		Type:  p2p.EngineType_ENGINE_TYPE_SNOWMAN,
+		State: snow.NormalOp, // assumed bootstrap is done
+	})
 
 	bootstrapper.StartF = func(context.Context, uint32) error {
 		return nil

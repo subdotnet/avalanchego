@@ -19,20 +19,24 @@ import (
 
 	"github.com/ava-labs/avalanchego/api/keystore"
 	"github.com/ava-labs/avalanchego/chains/atomic"
+	"github.com/ava-labs/avalanchego/database"
 	"github.com/ava-labs/avalanchego/database/manager"
-	"github.com/ava-labs/avalanchego/database/mockdb"
+	"github.com/ava-labs/avalanchego/database/memdb"
 	"github.com/ava-labs/avalanchego/database/prefixdb"
+	"github.com/ava-labs/avalanchego/database/versiondb"
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/snow"
 	"github.com/ava-labs/avalanchego/snow/engine/common"
+	"github.com/ava-labs/avalanchego/snow/validators"
 	"github.com/ava-labs/avalanchego/utils/cb58"
 	"github.com/ava-labs/avalanchego/utils/constants"
-	"github.com/ava-labs/avalanchego/utils/crypto"
+	"github.com/ava-labs/avalanchego/utils/crypto/secp256k1"
 	"github.com/ava-labs/avalanchego/utils/formatting"
 	"github.com/ava-labs/avalanchego/utils/formatting/address"
 	"github.com/ava-labs/avalanchego/utils/json"
 	"github.com/ava-labs/avalanchego/utils/wrappers"
 	"github.com/ava-labs/avalanchego/version"
+	"github.com/ava-labs/avalanchego/vms/avm/config"
 	"github.com/ava-labs/avalanchego/vms/avm/fxs"
 	"github.com/ava-labs/avalanchego/vms/avm/states"
 	"github.com/ava-labs/avalanchego/vms/avm/txs"
@@ -50,7 +54,7 @@ var (
 	testBanffTime        = time.Date(10000, time.December, 1, 0, 0, 0, 0, time.UTC)
 	startBalance         = uint64(50000)
 
-	keys  []*crypto.PrivateKeySECP256K1R
+	keys  []*secp256k1.PrivateKey
 	addrs []ids.ShortID // addrs[i] corresponds to keys[i]
 
 	assetID        = ids.ID{1, 2, 3}
@@ -58,10 +62,12 @@ var (
 	password       = "StrnasfqewiurPasswdn56d" // #nosec G101
 	feeAssetName   = "TEST"
 	otherAssetName = "OTHER"
+
+	errMissing = errors.New("missing")
 )
 
 func init() {
-	factory := crypto.FactorySECP256K1R{}
+	factory := secp256k1.Factory{}
 
 	for _, key := range []string{
 		"24jUJ9vZexUM6expyMcT48LBx27k1m7xpraoV62oSQAHdziao5",
@@ -70,21 +76,9 @@ func init() {
 	} {
 		keyBytes, _ := cb58.Decode(key)
 		pk, _ := factory.ToPrivateKey(keyBytes)
-		keys = append(keys, pk.(*crypto.PrivateKeySECP256K1R))
+		keys = append(keys, pk)
 		addrs = append(addrs, pk.PublicKey().Address())
 	}
-}
-
-type snLookup struct {
-	chainsToSubnet map[ids.ID]ids.ID
-}
-
-func (sn *snLookup) SubnetID(chainID ids.ID) (ids.ID, error) {
-	subnetID, ok := sn.chainsToSubnet[chainID]
-	if !ok {
-		return ids.ID{}, errors.New("")
-	}
-	return subnetID, nil
 }
 
 func NewContext(tb testing.TB) *snow.Context {
@@ -111,18 +105,25 @@ func NewContext(tb testing.TB) *snow.Context {
 		tb.Fatal(errs.Err)
 	}
 
-	sn := &snLookup{
-		chainsToSubnet: make(map[ids.ID]ids.ID),
+	ctx.ValidatorState = &validators.TestState{
+		GetSubnetIDF: func(_ context.Context, chainID ids.ID) (ids.ID, error) {
+			subnetID, ok := map[ids.ID]ids.ID{
+				constants.PlatformChainID: ctx.SubnetID,
+				chainID:                   ctx.SubnetID,
+			}[chainID]
+			if !ok {
+				return ids.Empty, errMissing
+			}
+			return subnetID, nil
+		},
 	}
-	sn.chainsToSubnet[chainID] = ctx.SubnetID
-	sn.chainsToSubnet[constants.PlatformChainID] = ctx.SubnetID
-	ctx.SNLookup = sn
 	return ctx
 }
 
 // Returns:
-//   1) tx in genesis that creates asset
-//   2) the index of the output
+//
+//  1. tx in genesis that creates asset
+//  2. the index of the output
 func GetCreateTxFromGenesisTest(tb testing.TB, genesisBytes []byte, assetName string) *txs.Tx {
 	parser, err := txs.NewParser([]fxs.Fx{
 		&secp256k1fx.Fx{},
@@ -304,7 +305,7 @@ func GenesisVMWithArgs(tb testing.TB, additionalFxs []*common.Fx, args *BuildGen
 	ctx.Keystore = userKeystore.NewBlockchainKeyStore(ctx.ChainID)
 
 	issuer := make(chan common.Message, 1)
-	vm := &VM{Factory: Factory{
+	vm := &VM{Config: config.Config{
 		TxFee:            testTxFee,
 		CreateAssetTxFee: testTxFee,
 	}}
@@ -379,7 +380,7 @@ func NewTxWithAsset(t *testing.T, genesisBytes []byte, vm *VM, assetName string)
 			}},
 		},
 	}}
-	if err := newTx.SignSECP256K1Fx(vm.parser.Codec(), [][]*crypto.PrivateKeySECP256K1R{{keys[0]}}); err != nil {
+	if err := newTx.SignSECP256K1Fx(vm.parser.Codec(), [][]*secp256k1.PrivateKey{{keys[0]}}); err != nil {
 		t.Fatal(err)
 	}
 	return newTx
@@ -422,7 +423,7 @@ func setupIssueTx(t testing.TB) (chan common.Message, *VM, *snow.Context, []*txs
 			}},
 		},
 	}}
-	if err := firstTx.SignSECP256K1Fx(vm.parser.Codec(), [][]*crypto.PrivateKeySECP256K1R{{key}}); err != nil {
+	if err := firstTx.SignSECP256K1Fx(vm.parser.Codec(), [][]*secp256k1.PrivateKey{{key}}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -457,7 +458,7 @@ func setupIssueTx(t testing.TB) (chan common.Message, *VM, *snow.Context, []*txs
 			}},
 		},
 	}}
-	if err := secondTx.SignSECP256K1Fx(vm.parser.Codec(), [][]*crypto.PrivateKeySECP256K1R{{key}}); err != nil {
+	if err := secondTx.SignSECP256K1Fx(vm.parser.Codec(), [][]*secp256k1.PrivateKey{{key}}); err != nil {
 		t.Fatal(err)
 	}
 	return issuer, vm, ctx, []*txs.Tx{avaxTx, firstTx, secondTx}
@@ -729,7 +730,7 @@ func TestIssueNFT(t *testing.T) {
 			},
 		}},
 	}}
-	if err := mintNFTTx.SignNFTFx(vm.parser.Codec(), [][]*crypto.PrivateKeySECP256K1R{{keys[0]}}); err != nil {
+	if err := mintNFTTx.SignNFTFx(vm.parser.Codec(), [][]*secp256k1.PrivateKey{{keys[0]}}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -880,7 +881,7 @@ func TestIssueProperty(t *testing.T) {
 	}}
 
 	codec := vm.parser.Codec()
-	err = mintPropertyTx.SignPropertyFx(codec, [][]*crypto.PrivateKeySECP256K1R{
+	err = mintPropertyTx.SignPropertyFx(codec, [][]*secp256k1.PrivateKey{
 		{keys[0]},
 	})
 	if err != nil {
@@ -906,7 +907,7 @@ func TestIssueProperty(t *testing.T) {
 		}},
 	}}
 
-	err = burnPropertyTx.SignPropertyFx(codec, [][]*crypto.PrivateKeySECP256K1R{
+	err = burnPropertyTx.SignPropertyFx(codec, [][]*secp256k1.PrivateKey{
 		{},
 	})
 	if err != nil {
@@ -1054,7 +1055,7 @@ func TestIssueTxWithAnotherAsset(t *testing.T) {
 			},
 		},
 	}}
-	if err := newTx.SignSECP256K1Fx(vm.parser.Codec(), [][]*crypto.PrivateKeySECP256K1R{{keys[0]}, {keys[0]}}); err != nil {
+	if err := newTx.SignSECP256K1Fx(vm.parser.Codec(), [][]*secp256k1.PrivateKey{{keys[0]}, {keys[0]}}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1116,24 +1117,22 @@ func TestTxCached(t *testing.T) {
 	_, err := vm.ParseTx(context.Background(), txBytes)
 	require.NoError(t, err)
 
-	db := mockdb.New()
-	called := new(bool)
-	db.OnGet = func([]byte) ([]byte, error) {
-		*called = true
-		return nil, errors.New("")
-	}
-
 	registerer := prometheus.NewRegistry()
 
 	err = vm.metrics.Initialize("", registerer)
 	require.NoError(t, err)
 
-	vm.state, err = states.New(prefixdb.New([]byte("tx"), db), vm.parser, registerer)
+	db := memdb.New()
+	vdb := versiondb.New(db)
+	vm.state, err = states.New(vdb, vm.parser, registerer)
 	require.NoError(t, err)
 
 	_, err = vm.ParseTx(context.Background(), txBytes)
 	require.NoError(t, err)
-	require.False(t, *called, "shouldn't have called the DB")
+
+	count, err := database.Count(vdb)
+	require.NoError(t, err)
+	require.Zero(t, count)
 }
 
 func TestTxNotCached(t *testing.T) {
@@ -1152,30 +1151,25 @@ func TestTxNotCached(t *testing.T) {
 	_, err := vm.ParseTx(context.Background(), txBytes)
 	require.NoError(t, err)
 
-	db := mockdb.New()
-	called := new(bool)
-	db.OnGet = func([]byte) ([]byte, error) {
-		*called = true
-		return nil, errors.New("")
-	}
-	db.OnPut = func([]byte, []byte) error {
-		return nil
-	}
-
 	registerer := prometheus.NewRegistry()
 	require.NoError(t, err)
 
 	err = vm.metrics.Initialize("", registerer)
 	require.NoError(t, err)
 
-	vm.state, err = states.New(db, vm.parser, registerer)
+	db := memdb.New()
+	vdb := versiondb.New(db)
+	vm.state, err = states.New(vdb, vm.parser, registerer)
 	require.NoError(t, err)
 
 	vm.uniqueTxs.Flush()
 
 	_, err = vm.ParseTx(context.Background(), txBytes)
 	require.NoError(t, err)
-	require.True(t, *called, "should have called the DB")
+
+	count, err := database.Count(vdb)
+	require.NoError(t, err)
+	require.NotZero(t, count)
 }
 
 func TestTxVerifyAfterIssueTx(t *testing.T) {
@@ -1294,7 +1288,7 @@ func TestTxVerifyAfterVerifyAncestorTx(t *testing.T) {
 			},
 		}},
 	}}}
-	if err := firstTxDescendant.SignSECP256K1Fx(vm.parser.Codec(), [][]*crypto.PrivateKeySECP256K1R{{key}}); err != nil {
+	if err := firstTxDescendant.SignSECP256K1Fx(vm.parser.Codec(), [][]*secp256k1.PrivateKey{{key}}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1472,7 +1466,7 @@ func TestImportTxSerialization(t *testing.T) {
 		0x1f, 0x49, 0x9b, 0x0a, 0x4f, 0xbf, 0x95, 0xfc, 0x31, 0x39,
 		0x46, 0x4e, 0xa1, 0xaf, 0x00,
 	}
-	if err := tx.SignSECP256K1Fx(vm.parser.Codec(), [][]*crypto.PrivateKeySECP256K1R{{keys[0], keys[0]}, {keys[0], keys[0]}}); err != nil {
+	if err := tx.SignSECP256K1Fx(vm.parser.Codec(), [][]*secp256k1.PrivateKey{{keys[0], keys[0]}, {keys[0], keys[0]}}); err != nil {
 		t.Fatal(err)
 	}
 	require.Equal(t, tx.ID().String(), "pCW7sVBytzdZ1WrqzGY1DvA2S9UaMr72xpUMxVyx1QHBARNYx")
@@ -1580,7 +1574,7 @@ func TestIssueImportTx(t *testing.T) {
 			},
 		}},
 	}}
-	if err := tx.SignSECP256K1Fx(vm.parser.Codec(), [][]*crypto.PrivateKeySECP256K1R{{key}}); err != nil {
+	if err := tx.SignSECP256K1Fx(vm.parser.Codec(), [][]*secp256k1.PrivateKey{{key}}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1739,7 +1733,7 @@ func TestForceAcceptImportTx(t *testing.T) {
 		}},
 	}}
 
-	if err := tx.SignSECP256K1Fx(vm.parser.Codec(), [][]*crypto.PrivateKeySECP256K1R{{key}}); err != nil {
+	if err := tx.SignSECP256K1Fx(vm.parser.Codec(), [][]*secp256k1.PrivateKey{{key}}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1842,7 +1836,7 @@ func TestIssueExportTx(t *testing.T) {
 			},
 		}},
 	}}
-	if err := tx.SignSECP256K1Fx(vm.parser.Codec(), [][]*crypto.PrivateKeySECP256K1R{{key}}); err != nil {
+	if err := tx.SignSECP256K1Fx(vm.parser.Codec(), [][]*secp256k1.PrivateKey{{key}}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1978,7 +1972,7 @@ func TestClearForceAcceptedExportTx(t *testing.T) {
 			},
 		}},
 	}}
-	if err := tx.SignSECP256K1Fx(vm.parser.Codec(), [][]*crypto.PrivateKeySECP256K1R{{key}}); err != nil {
+	if err := tx.SignSECP256K1Fx(vm.parser.Codec(), [][]*secp256k1.PrivateKey{{key}}); err != nil {
 		t.Fatal(err)
 	}
 

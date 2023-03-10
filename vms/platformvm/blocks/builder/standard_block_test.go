@@ -12,7 +12,7 @@ import (
 	"github.com/ava-labs/avalanchego/chains/atomic"
 	"github.com/ava-labs/avalanchego/database/prefixdb"
 	"github.com/ava-labs/avalanchego/ids"
-	"github.com/ava-labs/avalanchego/utils/crypto"
+	"github.com/ava-labs/avalanchego/utils/crypto/secp256k1"
 	"github.com/ava-labs/avalanchego/vms/components/avax"
 	"github.com/ava-labs/avalanchego/vms/platformvm/status"
 	"github.com/ava-labs/avalanchego/vms/platformvm/txs"
@@ -25,9 +25,7 @@ func TestAtomicTxImports(t *testing.T) {
 	env := newEnvironment(t)
 	env.ctx.Lock.Lock()
 	defer func() {
-		if err := shutdownEnvironment(env); err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(shutdownEnvironment(env))
 	}()
 
 	utxoID := avax.UTXOID{
@@ -70,7 +68,7 @@ func TestAtomicTxImports(t *testing.T) {
 	tx, err := env.txBuilder.NewImportTx(
 		env.ctx.XChainID,
 		recipientKey.PublicKey().Address(),
-		[]*crypto.PrivateKeySECP256K1R{recipientKey},
+		[]*secp256k1.PrivateKey{recipientKey},
 		ids.ShortEmpty, // change addr
 	)
 	require.NoError(err)

@@ -6,22 +6,24 @@ package avalanche
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"go.uber.org/zap"
 
 	"github.com/ava-labs/avalanchego/ids"
+	"github.com/ava-labs/avalanchego/proto/pb/p2p"
 	"github.com/ava-labs/avalanchego/snow"
 	"github.com/ava-labs/avalanchego/snow/consensus/avalanche"
 	"github.com/ava-labs/avalanchego/snow/consensus/avalanche/poll"
 	"github.com/ava-labs/avalanchego/snow/consensus/snowstorm"
 	"github.com/ava-labs/avalanchego/snow/engine/avalanche/vertex"
 	"github.com/ava-labs/avalanchego/snow/engine/common"
+	"github.com/ava-labs/avalanchego/snow/engine/common/tracker"
 	"github.com/ava-labs/avalanchego/snow/events"
+	"github.com/ava-labs/avalanchego/snow/validators"
+	"github.com/ava-labs/avalanchego/utils/bag"
 	"github.com/ava-labs/avalanchego/utils/sampler"
 	"github.com/ava-labs/avalanchego/utils/set"
 	"github.com/ava-labs/avalanchego/utils/wrappers"
-	"github.com/ava-labs/avalanchego/version"
 )
 
 var _ Engine = (*Transitive)(nil)
@@ -42,8 +44,13 @@ type Transitive struct {
 	common.AcceptedFrontierHandler
 	common.AcceptedHandler
 	common.AncestorsHandler
+	common.AppHandler
+	validators.Connector
 
 	RequestID uint32
+
+	// acceptedFrontiers of the other validators of this chain
+	acceptedFrontiers tracker.Accepted
 
 	polls poll.Set // track people I have asked for their preference
 
@@ -75,6 +82,9 @@ type Transitive struct {
 func newTransitive(config Config) (*Transitive, error) {
 	config.Ctx.Log.Info("initializing consensus engine")
 
+	acceptedFrontiers := tracker.NewAccepted()
+	config.Validators.RegisterCallbackListener(acceptedFrontiers)
+
 	factory := poll.NewEarlyTermNoTraversalFactory(config.Params.Alpha)
 
 	t := &Transitive{
@@ -84,15 +94,18 @@ func newTransitive(config Config) (*Transitive, error) {
 		AcceptedFrontierHandler:     common.NewNoOpAcceptedFrontierHandler(config.Ctx.Log),
 		AcceptedHandler:             common.NewNoOpAcceptedHandler(config.Ctx.Log),
 		AncestorsHandler:            common.NewNoOpAncestorsHandler(config.Ctx.Log),
+		AppHandler:                  config.VM,
+		Connector:                   config.VM,
+		acceptedFrontiers:           acceptedFrontiers,
 		polls: poll.NewSet(factory,
 			config.Ctx.Log,
 			"",
-			config.Ctx.Registerer,
+			config.Ctx.AvalancheRegisterer,
 		),
 		uniformSampler: sampler.NewUniform(),
 	}
 
-	return t, t.metrics.Initialize("", config.Ctx.Registerer)
+	return t, t.metrics.Initialize("", config.Ctx.AvalancheRegisterer)
 }
 
 func (t *Transitive) Put(ctx context.Context, nodeID ids.NodeID, requestID uint32, vtxBytes []byte) error {
@@ -171,7 +184,7 @@ func (t *Transitive) GetFailed(ctx context.Context, nodeID ids.NodeID, requestID
 
 func (t *Transitive) PullQuery(ctx context.Context, nodeID ids.NodeID, requestID uint32, vtxID ids.ID) error {
 	// Immediately respond to the query with the current consensus preferences.
-	t.Sender.SendChits(ctx, nodeID, requestID, t.Consensus.Preferences().List())
+	t.Sender.SendChits(ctx, nodeID, requestID, t.Consensus.Preferences().List(), t.Manager.Edge(ctx))
 
 	// If we have [vtxID], attempt to put it into consensus, if we haven't
 	// already. If we don't not have [vtxID], fetch it from [nodeID].
@@ -184,7 +197,7 @@ func (t *Transitive) PullQuery(ctx context.Context, nodeID ids.NodeID, requestID
 
 func (t *Transitive) PushQuery(ctx context.Context, nodeID ids.NodeID, requestID uint32, vtxBytes []byte) error {
 	// Immediately respond to the query with the current consensus preferences.
-	t.Sender.SendChits(ctx, nodeID, requestID, t.Consensus.Preferences().List())
+	t.Sender.SendChits(ctx, nodeID, requestID, t.Consensus.Preferences().List(), t.Manager.Edge(ctx))
 
 	vtx, err := t.Manager.ParseVtx(ctx, vtxBytes)
 	if err != nil {
@@ -213,7 +226,9 @@ func (t *Transitive) PushQuery(ctx context.Context, nodeID ids.NodeID, requestID
 	return t.attemptToIssueTxs(ctx)
 }
 
-func (t *Transitive) Chits(ctx context.Context, nodeID ids.NodeID, requestID uint32, votes []ids.ID) error {
+func (t *Transitive) Chits(ctx context.Context, nodeID ids.NodeID, requestID uint32, votes []ids.ID, accepted []ids.ID) error {
+	t.acceptedFrontiers.SetAcceptedFrontier(nodeID, accepted)
+
 	v := &voter{
 		t:         t,
 		vdr:       nodeID,
@@ -234,47 +249,8 @@ func (t *Transitive) Chits(ctx context.Context, nodeID ids.NodeID, requestID uin
 }
 
 func (t *Transitive) QueryFailed(ctx context.Context, nodeID ids.NodeID, requestID uint32) error {
-	return t.Chits(ctx, nodeID, requestID, nil)
-}
-
-func (t *Transitive) CrossChainAppRequest(ctx context.Context, chainID ids.ID, requestID uint32, deadline time.Time, request []byte) error {
-	return t.VM.CrossChainAppRequest(ctx, chainID, requestID, deadline, request)
-}
-
-func (t *Transitive) CrossChainAppRequestFailed(ctx context.Context, chainID ids.ID, requestID uint32) error {
-	return t.VM.CrossChainAppRequestFailed(ctx, chainID, requestID)
-}
-
-func (t *Transitive) CrossChainAppResponse(ctx context.Context, chainID ids.ID, requestID uint32, response []byte) error {
-	return t.VM.CrossChainAppResponse(ctx, chainID, requestID, response)
-}
-
-func (t *Transitive) AppRequest(ctx context.Context, nodeID ids.NodeID, requestID uint32, deadline time.Time, request []byte) error {
-	// Notify the VM of this request
-	return t.VM.AppRequest(ctx, nodeID, requestID, deadline, request)
-}
-
-func (t *Transitive) AppRequestFailed(ctx context.Context, nodeID ids.NodeID, requestID uint32) error {
-	// Notify the VM that a request it made failed
-	return t.VM.AppRequestFailed(ctx, nodeID, requestID)
-}
-
-func (t *Transitive) AppResponse(ctx context.Context, nodeID ids.NodeID, requestID uint32, response []byte) error {
-	// Notify the VM of a response to its request
-	return t.VM.AppResponse(ctx, nodeID, requestID, response)
-}
-
-func (t *Transitive) AppGossip(ctx context.Context, nodeID ids.NodeID, msg []byte) error {
-	// Notify the VM of this message which has been gossiped to it
-	return t.VM.AppGossip(ctx, nodeID, msg)
-}
-
-func (t *Transitive) Connected(ctx context.Context, nodeID ids.NodeID, nodeVersion *version.Application) error {
-	return t.VM.Connected(ctx, nodeID, nodeVersion)
-}
-
-func (t *Transitive) Disconnected(ctx context.Context, nodeID ids.NodeID) error {
-	return t.VM.Disconnected(ctx, nodeID)
+	lastAccepted := t.acceptedFrontiers.AcceptedFrontier(nodeID)
+	return t.Chits(ctx, nodeID, requestID, lastAccepted, lastAccepted)
 }
 
 func (*Transitive) Timeout(context.Context) error {
@@ -365,7 +341,10 @@ func (t *Transitive) Start(ctx context.Context, startReqID uint32) error {
 	)
 	t.metrics.bootstrapFinished.Set(1)
 
-	t.Ctx.SetState(snow.NormalOp)
+	t.Ctx.State.Set(snow.EngineState{
+		Type:  p2p.EngineType_ENGINE_TYPE_AVALANCHE,
+		State: snow.NormalOp,
+	})
 	if err := t.VM.SetState(ctx, snow.NormalOp); err != nil {
 		return fmt.Errorf("failed to notify VM that consensus has started: %w",
 			err)
@@ -386,7 +365,7 @@ func (t *Transitive) HealthCheck(ctx context.Context) (interface{}, error) {
 	if vmErr == nil {
 		return intf, consensusErr
 	}
-	return intf, fmt.Errorf("vm: %w ; consensus: %s", vmErr, consensusErr)
+	return intf, fmt.Errorf("vm: %w ; consensus: %v", vmErr, consensusErr)
 }
 
 func (t *Transitive) GetVM() common.VM {
@@ -636,7 +615,7 @@ func (t *Transitive) issueRepoll(ctx context.Context) {
 		return
 	}
 
-	vdrBag := ids.NodeIDBag{} // IDs of validators to be sampled
+	vdrBag := bag.Bag[ids.NodeID]{} // IDs of validators to be sampled
 	vdrBag.Add(vdrIDs...)
 
 	vdrList := vdrBag.List()

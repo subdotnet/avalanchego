@@ -11,6 +11,7 @@ import (
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/snow/consensus/snowstorm"
 	"github.com/ava-labs/avalanchego/snow/engine/avalanche/vertex"
+	"github.com/ava-labs/avalanchego/utils/bag"
 	"github.com/ava-labs/avalanchego/utils/set"
 )
 
@@ -47,16 +48,18 @@ func (v *voter) Update(ctx context.Context) {
 	if len(results) == 0 {
 		return
 	}
+
 	for _, result := range results {
+		result := result
+		v.t.Ctx.Log.Debug("filtering poll results",
+			zap.Stringer("result", &result),
+		)
+
 		_, err := v.bubbleVotes(ctx, result)
 		if err != nil {
 			v.t.errs.Add(err)
 			return
 		}
-	}
-
-	for _, result := range results {
-		result := result
 
 		v.t.Ctx.Log.Debug("finishing poll",
 			zap.Stringer("result", &result),
@@ -98,7 +101,7 @@ func (v *voter) Update(ctx context.Context) {
 	v.t.repoll(ctx)
 }
 
-func (v *voter) bubbleVotes(ctx context.Context, votes ids.UniqueBag) (ids.UniqueBag, error) {
+func (v *voter) bubbleVotes(ctx context.Context, votes bag.UniqueBag[ids.ID]) (bag.UniqueBag[ids.ID], error) {
 	vertexHeap := vertex.NewHeap()
 	for vote, set := range votes {
 		vtx, err := v.t.Manager.GetVtx(ctx, vote)

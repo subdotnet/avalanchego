@@ -7,6 +7,8 @@ import (
 	"github.com/ava-labs/avalanchego/codec"
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/snow"
+	"github.com/ava-labs/avalanchego/utils/set"
+	"github.com/ava-labs/avalanchego/vms/avm/config"
 	"github.com/ava-labs/avalanchego/vms/components/avax"
 	"github.com/ava-labs/avalanchego/vms/secp256k1fx"
 )
@@ -29,7 +31,7 @@ func (t *BaseTx) InitCtx(ctx *snow.Context) {
 	}
 }
 
-func (t *BaseTx) Initialize(bytes []byte) {
+func (t *BaseTx) SetBytes(bytes []byte) {
 	t.bytes = bytes
 }
 
@@ -37,12 +39,19 @@ func (t *BaseTx) Bytes() []byte {
 	return t.bytes
 }
 
+func (t *BaseTx) InputIDs() set.Set[ids.ID] {
+	inputIDs := set.NewSet[ids.ID](len(t.Ins))
+	for _, in := range t.Ins {
+		inputIDs.Add(in.InputID())
+	}
+	return inputIDs
+}
+
 func (t *BaseTx) SyntacticVerify(
 	ctx *snow.Context,
 	c codec.Manager,
 	txFeeAssetID ids.ID,
-	txFee uint64,
-	_ uint64,
+	config *config.Config,
 	_ int,
 ) error {
 	if t == nil {
@@ -54,7 +63,7 @@ func (t *BaseTx) SyntacticVerify(
 	}
 
 	return avax.VerifyTx(
-		txFee,
+		config.TxFee,
 		txFeeAssetID,
 		[][]*avax.TransferableInput{t.Ins},
 		[][]*avax.TransferableOutput{t.Outs},

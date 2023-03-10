@@ -10,9 +10,10 @@ import (
 	"github.com/ava-labs/avalanchego/codec"
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/snow"
-	"github.com/ava-labs/avalanchego/utils/crypto"
+	"github.com/ava-labs/avalanchego/utils/crypto/secp256k1"
 	"github.com/ava-labs/avalanchego/utils/hashing"
 	"github.com/ava-labs/avalanchego/utils/set"
+	"github.com/ava-labs/avalanchego/vms/avm/config"
 	"github.com/ava-labs/avalanchego/vms/avm/fxs"
 	"github.com/ava-labs/avalanchego/vms/components/avax"
 	"github.com/ava-labs/avalanchego/vms/nftfx"
@@ -25,21 +26,23 @@ var errNilTx = errors.New("nil tx is not valid")
 type UnsignedTx interface {
 	snow.ContextInitializable
 
-	Initialize(unsignedBytes []byte)
+	SetBytes(unsignedBytes []byte)
 	Bytes() []byte
+
+	InputIDs() set.Set[ids.ID]
 
 	ConsumedAssetIDs() set.Set[ids.ID]
 	AssetIDs() set.Set[ids.ID]
 
 	NumCredentials() int
+	// TODO: deprecate after x-chain linearization
 	InputUTXOs() []*avax.UTXOID
 
 	SyntacticVerify(
 		ctx *snow.Context,
 		c codec.Manager,
 		txFeeAssetID ids.ID,
-		txFee uint64,
-		creationTxFee uint64,
+		config *config.Config,
 		numFxs int,
 	) error
 	// Visit calls [visitor] with this transaction's concrete type
@@ -59,10 +62,26 @@ type Tx struct {
 	bytes []byte
 }
 
-func (t *Tx) Initialize(unsignedBytes, signedBytes []byte) {
+func (t *Tx) Initialize(c codec.Manager) error {
+	signedBytes, err := c.Marshal(CodecVersion, t)
+	if err != nil {
+		return fmt.Errorf("problem creating transaction: %w", err)
+	}
+
+	unsignedBytesLen, err := c.Size(CodecVersion, &t.Unsigned)
+	if err != nil {
+		return fmt.Errorf("couldn't calculate UnsignedTx marshal length: %w", err)
+	}
+
+	unsignedBytes := signedBytes[:unsignedBytesLen]
+	t.SetBytes(unsignedBytes, signedBytes)
+	return nil
+}
+
+func (t *Tx) SetBytes(unsignedBytes, signedBytes []byte) {
 	t.id = hashing.ComputeHash256Array(signedBytes)
 	t.bytes = signedBytes
-	t.Unsigned.Initialize(unsignedBytes)
+	t.Unsigned.SetBytes(unsignedBytes)
 }
 
 // ID returns the unique ID of this tx
@@ -89,15 +108,14 @@ func (t *Tx) SyntacticVerify(
 	ctx *snow.Context,
 	c codec.Manager,
 	txFeeAssetID ids.ID,
-	txFee uint64,
-	creationTxFee uint64,
+	config *config.Config,
 	numFxs int,
 ) error {
 	if t == nil || t.Unsigned == nil {
 		return errNilTx
 	}
 
-	if err := t.Unsigned.SyntacticVerify(ctx, c, txFeeAssetID, txFee, creationTxFee, numFxs); err != nil {
+	if err := t.Unsigned.SyntacticVerify(ctx, c, txFeeAssetID, config, numFxs); err != nil {
 		return err
 	}
 
@@ -116,7 +134,7 @@ func (t *Tx) SyntacticVerify(
 	return nil
 }
 
-func (t *Tx) SignSECP256K1Fx(c codec.Manager, signers [][]*crypto.PrivateKeySECP256K1R) error {
+func (t *Tx) SignSECP256K1Fx(c codec.Manager, signers [][]*secp256k1.PrivateKey) error {
 	unsignedBytes, err := c.Marshal(CodecVersion, &t.Unsigned)
 	if err != nil {
 		return fmt.Errorf("problem creating transaction: %w", err)
@@ -125,7 +143,7 @@ func (t *Tx) SignSECP256K1Fx(c codec.Manager, signers [][]*crypto.PrivateKeySECP
 	hash := hashing.ComputeHash256(unsignedBytes)
 	for _, keys := range signers {
 		cred := &secp256k1fx.Credential{
-			Sigs: make([][crypto.SECP256K1RSigLen]byte, len(keys)),
+			Sigs: make([][secp256k1.SignatureLen]byte, len(keys)),
 		}
 		for i, key := range keys {
 			sig, err := key.SignHash(hash)
@@ -141,11 +159,11 @@ func (t *Tx) SignSECP256K1Fx(c codec.Manager, signers [][]*crypto.PrivateKeySECP
 	if err != nil {
 		return fmt.Errorf("problem creating transaction: %w", err)
 	}
-	t.Initialize(unsignedBytes, signedBytes)
+	t.SetBytes(unsignedBytes, signedBytes)
 	return nil
 }
 
-func (t *Tx) SignPropertyFx(c codec.Manager, signers [][]*crypto.PrivateKeySECP256K1R) error {
+func (t *Tx) SignPropertyFx(c codec.Manager, signers [][]*secp256k1.PrivateKey) error {
 	unsignedBytes, err := c.Marshal(CodecVersion, &t.Unsigned)
 	if err != nil {
 		return fmt.Errorf("problem creating transaction: %w", err)
@@ -154,7 +172,7 @@ func (t *Tx) SignPropertyFx(c codec.Manager, signers [][]*crypto.PrivateKeySECP2
 	hash := hashing.ComputeHash256(unsignedBytes)
 	for _, keys := range signers {
 		cred := &propertyfx.Credential{Credential: secp256k1fx.Credential{
-			Sigs: make([][crypto.SECP256K1RSigLen]byte, len(keys)),
+			Sigs: make([][secp256k1.SignatureLen]byte, len(keys)),
 		}}
 		for i, key := range keys {
 			sig, err := key.SignHash(hash)
@@ -170,11 +188,11 @@ func (t *Tx) SignPropertyFx(c codec.Manager, signers [][]*crypto.PrivateKeySECP2
 	if err != nil {
 		return fmt.Errorf("problem creating transaction: %w", err)
 	}
-	t.Initialize(unsignedBytes, signedBytes)
+	t.SetBytes(unsignedBytes, signedBytes)
 	return nil
 }
 
-func (t *Tx) SignNFTFx(c codec.Manager, signers [][]*crypto.PrivateKeySECP256K1R) error {
+func (t *Tx) SignNFTFx(c codec.Manager, signers [][]*secp256k1.PrivateKey) error {
 	unsignedBytes, err := c.Marshal(CodecVersion, &t.Unsigned)
 	if err != nil {
 		return fmt.Errorf("problem creating transaction: %w", err)
@@ -183,7 +201,7 @@ func (t *Tx) SignNFTFx(c codec.Manager, signers [][]*crypto.PrivateKeySECP256K1R
 	hash := hashing.ComputeHash256(unsignedBytes)
 	for _, keys := range signers {
 		cred := &nftfx.Credential{Credential: secp256k1fx.Credential{
-			Sigs: make([][crypto.SECP256K1RSigLen]byte, len(keys)),
+			Sigs: make([][secp256k1.SignatureLen]byte, len(keys)),
 		}}
 		for i, key := range keys {
 			sig, err := key.SignHash(hash)
@@ -199,6 +217,6 @@ func (t *Tx) SignNFTFx(c codec.Manager, signers [][]*crypto.PrivateKeySECP256K1R
 	if err != nil {
 		return fmt.Errorf("problem creating transaction: %w", err)
 	}
-	t.Initialize(unsignedBytes, signedBytes)
+	t.SetBytes(unsignedBytes, signedBytes)
 	return nil
 }
