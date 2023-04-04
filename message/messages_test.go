@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2022, Ava Labs, Inc. All rights reserved.
+// Copyright (C) 2019-2023, Ava Labs, Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
 package message
@@ -325,7 +325,6 @@ func TestMessage(t *testing.T) {
 						ChainId:      testID[:],
 						RequestId:    1,
 						ContainerIds: [][]byte{testID[:], testID[:]},
-						EngineType:   p2p.EngineType_ENGINE_TYPE_AVALANCHE,
 					},
 				},
 			},
@@ -360,7 +359,6 @@ func TestMessage(t *testing.T) {
 						ChainId:      testID[:],
 						RequestId:    1,
 						ContainerIds: [][]byte{testID[:], testID[:]},
-						EngineType:   p2p.EngineType_ENGINE_TYPE_AVALANCHE,
 					},
 				},
 			},
@@ -395,7 +393,6 @@ func TestMessage(t *testing.T) {
 						ChainId:    testID[:],
 						RequestId:  12345,
 						Containers: compressibleContainers,
-						EngineType: p2p.EngineType_ENGINE_TYPE_AVALANCHE,
 					},
 				},
 			},
@@ -412,7 +409,6 @@ func TestMessage(t *testing.T) {
 						ChainId:    testID[:],
 						RequestId:  12345,
 						Containers: compressibleContainers,
-						EngineType: p2p.EngineType_ENGINE_TYPE_AVALANCHE,
 					},
 				},
 			},
@@ -535,7 +531,6 @@ func TestMessage(t *testing.T) {
 						ChainId:               testID[:],
 						RequestId:             1,
 						PreferredContainerIds: [][]byte{testID[:], testID[:]},
-						EngineType:            p2p.EngineType_ENGINE_TYPE_AVALANCHE,
 					},
 				},
 			},

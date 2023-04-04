@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2022, Ava Labs, Inc. All rights reserved.
+// Copyright (C) 2019-2023, Ava Labs, Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
 package message
@@ -185,7 +185,6 @@ func TestInboundMsgBuilder(t *testing.T) {
 				requestID,
 				containerIDs,
 				nodeID,
-				engineType,
 			)
 
 			require.Equal(AcceptedFrontierOp, msg.Op())
@@ -201,7 +200,6 @@ func TestInboundMsgBuilder(t *testing.T) {
 				containerIDsBytes[i] = id[:]
 			}
 			require.Equal(containerIDsBytes, innerMsg.ContainerIds)
-			require.Equal(engineType, innerMsg.EngineType)
 		},
 	)
 
@@ -243,7 +241,6 @@ func TestInboundMsgBuilder(t *testing.T) {
 				requestID,
 				containerIDs,
 				nodeID,
-				engineType,
 			)
 
 			require.Equal(AcceptedOp, msg.Op())
@@ -259,7 +256,6 @@ func TestInboundMsgBuilder(t *testing.T) {
 				containerIDsBytes[i] = id[:]
 			}
 			require.Equal(containerIDsBytes, innerMsg.ContainerIds)
-			require.Equal(engineType, innerMsg.EngineType)
 		},
 	)
 
@@ -332,7 +328,6 @@ func TestInboundMsgBuilder(t *testing.T) {
 				containerIDs,
 				acceptedContainerIDs,
 				nodeID,
-				engineType,
 			)
 
 			require.Equal(ChitsOp, msg.Op())
@@ -354,7 +349,6 @@ func TestInboundMsgBuilder(t *testing.T) {
 				acceptedContainerIDsBytes[i] = id[:]
 			}
 			require.Equal(acceptedContainerIDsBytes, innerMsg.AcceptedContainerIds)
-			require.Equal(engineType, innerMsg.EngineType)
 		},
 	)
 

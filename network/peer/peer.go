@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2022, Ava Labs, Inc. All rights reserved.
+// Copyright (C) 2019-2023, Ava Labs, Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
 package peer
@@ -606,7 +606,7 @@ func (p *peer) sendNetworkMessages() {
 			}
 
 			if len(peerIPs) == 0 {
-				p.Log.Debug(
+				p.Log.Verbo(
 					"skipping peer gossip as there are no unknown peers",
 					zap.Stringer("nodeID", p.id),
 				)
